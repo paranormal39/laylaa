@@ -1,0 +1,307 @@
+{
+  "compiler-version": "0.30.0",
+  "language-version": "0.22.0",
+  "runtime-version": "0.15.0",
+  "circuits": [
+    {
+      "name": "initialize",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "createCollection",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "collectionId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "type-name": "Bytes",
+            "length": 64
+          }
+        },
+        {
+          "name": "symbol",
+          "type": {
+            "type-name": "Bytes",
+            "length": 16
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "type-name": "Bytes",
+            "length": 256
+          }
+        },
+        {
+          "name": "metadataCID",
+          "type": {
+            "type-name": "Bytes",
+            "length": 64
+          }
+        },
+        {
+          "name": "royaltyBps",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 65535
+          }
+        },
+        {
+          "name": "maxSupply",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "verifyCollection",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "collectionId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "approveForMigration",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "collectionId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "incrementSupply",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "collectionId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "amount",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "setPaused",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "collectionId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "paused",
+          "type": {
+            "type-name": "Boolean"
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "getCollection",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "collectionId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Struct",
+        "name": "CollectionData",
+        "elements": [
+          {
+            "name": "name",
+            "type": {
+              "type-name": "Bytes",
+              "length": 64
+            }
+          },
+          {
+            "name": "symbol",
+            "type": {
+              "type-name": "Bytes",
+              "length": 16
+            }
+          },
+          {
+            "name": "description",
+            "type": {
+              "type-name": "Bytes",
+              "length": 256
+            }
+          },
+          {
+            "name": "metadataCID",
+            "type": {
+              "type-name": "Bytes",
+              "length": 64
+            }
+          },
+          {
+            "name": "creator",
+            "type": {
+              "type-name": "Struct",
+              "name": "Either",
+              "elements": [
+                {
+                  "name": "is_left",
+                  "type": {
+                    "type-name": "Boolean"
+                  }
+                },
+                {
+                  "name": "left",
+                  "type": {
+                    "type-name": "Struct",
+                    "name": "ZswapCoinPublicKey",
+                    "elements": [
+                      {
+                        "name": "bytes",
+                        "type": {
+                          "type-name": "Bytes",
+                          "length": 32
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "name": "right",
+                  "type": {
+                    "type-name": "Struct",
+                    "name": "ContractAddress",
+                    "elements": [
+                      {
+                        "name": "bytes",
+                        "type": {
+                          "type-name": "Bytes",
+                          "length": 32
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "isVerified",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "isApprovedForMigration",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "royaltyBps",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 65535
+            }
+          },
+          {
+            "name": "maxSupply",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 18446744073709551615
+            }
+          },
+          {
+            "name": "currentSupply",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 18446744073709551615
+            }
+          },
+          {
+            "name": "isPaused",
+            "type": {
+              "type-name": "Boolean"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "witnesses": [
+  ],
+  "contracts": [
+  ]
+}

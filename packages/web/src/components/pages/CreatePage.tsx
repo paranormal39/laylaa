@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { testnetMint, acceptNftOffer, gxgMint, createTokenBurn, verifyBurn, openAndAwait, getTokenPrice, batchMint, createPlatformCollection, type TokenPrice, type BatchMintItem, type BatchMintResultItem, type PlatformCollection } from '@/lib/xaman';
+import { testnetMint, acceptNftOffer, gxgMint, createTokenBurn, verifyBurn, openAndAwait, getTokenPrice, batchMint, createPlatformCollection, getPlatformCollections, type TokenPrice, type BatchMintItem, type BatchMintResultItem, type PlatformCollection } from '@/lib/xaman';
 import { useApp } from '@/context/AppContext';
 import { mintNFT, ownerFromCoinPublicKeyHex, padCID } from '@/lib/midnight';
 import { TOKENS } from '@/lib/tokens';
@@ -38,6 +38,8 @@ export function CreatePage() {
   const [collMode_result, setCollMode_result] = useState<PlatformCollection | null>(null);
   const [collMode_error, setCollMode_error] = useState<string | null>(null);
   const [collMode_running, setCollMode_running] = useState(false);
+  // Selected collection carried from Create Collection → Batch Mint
+  const [linkedCollectionId, setLinkedCollectionId] = useState<string | null>(null);
   const [step, setStep] = useState<Step>('idle');
   const [log, setLog] = useState<string[]>([]);
   const [result, setResult] = useState<{ txid?: string; nftoken_id?: string | null } | null>(null);
@@ -328,6 +330,10 @@ export function CreatePage() {
                   setCollMode_running(false);
                 }
               }}
+              onBatchMint={(col) => {
+                setLinkedCollectionId(col.id);
+                setMode('batch');
+              }}
             />
           )}
 
@@ -524,7 +530,7 @@ export function CreatePage() {
               <div className="font-mono text-xs">Tx: {result.txid}</div>
             </div>
           )}
-          {mode === 'batch' && <BatchMintPanel />}
+          {mode === 'batch' && <BatchMintPanel linkedCollectionId={linkedCollectionId} onClearLinked={() => setLinkedCollectionId(null)} />}
         </CardContent>
       </Card>
     </div>
@@ -561,11 +567,28 @@ function ModeButton({
 // Each item has its own name + URI; they share a taxon (collection ID).
 // Optionally saves the results as a named collection in the backend registry.
 // ---------------------------------------------------------------------------
-function BatchMintPanel() {
+function BatchMintPanel({ linkedCollectionId, onClearLinked }: { linkedCollectionId?: string | null; onClearLinked?: () => void }) {
   const app = useApp();
+  const [collections, setCollections] = useState<PlatformCollection[]>([]);
+  const [selectedColId, setSelectedColId] = useState<string>(linkedCollectionId ?? '');
   const [collectionName, setCollectionName] = useState('');
   const [collectionDesc, setCollectionDesc] = useState('');
   const [taxon, setTaxon] = useState('0');
+
+  useEffect(() => {
+    getPlatformCollections().then(setCollections).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (linkedCollectionId) setSelectedColId(linkedCollectionId);
+  }, [linkedCollectionId]);
+
+  useEffect(() => {
+    if (!selectedColId) { setCollectionName(''); setTaxon('0'); return; }
+    const col = collections.find((c) => c.id === selectedColId);
+    if (col) { setCollectionName(col.name); setCollectionDesc(col.description ?? ''); setTaxon(String(col.taxon)); }
+  }, [selectedColId, collections]);
+
   const [items, setItems] = useState<Array<{ name: string; uri: string; imageFile: File | null; imagePreview: string | null; metadataUri: string }>>([
     { name: '', uri: '', imageFile: null, imagePreview: null, metadataUri: '' },
   ]);
@@ -646,9 +669,11 @@ function BatchMintPanel() {
       append(`Creating XRPL tickets and minting ${mintItems.length} NFT(s)…`);
       const res = await batchMint(mintItems, {
         destination: app.xrplAccount,
+        collectionId: selectedColId || undefined,
         collectionName: collectionName.trim() || undefined,
         collectionDescription: collectionDesc.trim() || undefined,
       });
+      if (selectedColId && onClearLinked) onClearLinked();
 
       append(`Done. Minted: ${res.minted}/${res.attempted}`);
       res.results.forEach((r) => {
@@ -674,34 +699,56 @@ function BatchMintPanel() {
         <span className="ml-auto text-xs text-muted-foreground">{items.length}/50 NFTs</span>
       </div>
 
-      {/* Collection meta */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      {/* Collection picker */}
+      <div className="rounded-md border border-border bg-background p-3 space-y-3">
         <div>
-          <label className="block text-sm font-medium">Collection Name <span className="text-muted-foreground">(optional)</span></label>
-          <input
-            value={collectionName}
-            onChange={(e) => setCollectionName(e.target.value)}
-            placeholder="e.g. Cosmic Cats"
+          <label className="block text-sm font-medium">Link to existing collection <span className="text-muted-foreground">(optional)</span></label>
+          <select
+            value={selectedColId}
+            onChange={(e) => setSelectedColId(e.target.value)}
             className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+          >
+            <option value="">— none (create new or freestanding) —</option>
+            {collections.map((c) => (
+              <option key={c.id} value={c.id}>{c.name} · taxon {c.taxon} · {c.itemCount ?? c.items?.length ?? 0} NFTs</option>
+            ))}
+          </select>
+          {selectedColId && (
+            <p className="mt-1 text-xs text-accent">NFTs will be added to this collection automatically.</p>
+          )}
         </div>
-        <div>
-          <label className="block text-sm font-medium">Taxon (shared collection ID)</label>
-          <input
-            type="number"
-            value={taxon}
-            onChange={(e) => setTaxon(e.target.value)}
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="block text-sm font-medium">Description <span className="text-muted-foreground">(optional, applied to all)</span></label>
-          <input
-            value={collectionDesc}
-            onChange={(e) => setCollectionDesc(e.target.value)}
-            placeholder="Describe the collection…"
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="block text-sm font-medium">Collection Name</label>
+            <input
+              value={collectionName}
+              onChange={(e) => setCollectionName(e.target.value)}
+              placeholder="e.g. Cosmic Cats"
+              disabled={Boolean(selectedColId)}
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium">Taxon</label>
+            <input
+              type="number"
+              value={taxon}
+              onChange={(e) => setTaxon(e.target.value)}
+              disabled={Boolean(selectedColId)}
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium">Description <span className="text-muted-foreground">(optional, applied to all)</span></label>
+            <input
+              value={collectionDesc}
+              onChange={(e) => setCollectionDesc(e.target.value)}
+              placeholder="Describe the collection…"
+              disabled={Boolean(selectedColId)}
+              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            />
+          </div>
         </div>
       </div>
 
@@ -804,7 +851,7 @@ function BatchMintPanel() {
 // ---------------------------------------------------------------------------
 function CollectionCreatePanel({
   name, onName, desc, onDesc, taxon, onTaxon,
-  network, onNetwork, result, error, running, onSubmit,
+  network, onNetwork, result, error, running, onSubmit, onBatchMint,
 }: {
   name: string; onName: (v: string) => void;
   desc: string; onDesc: (v: string) => void;
@@ -814,6 +861,7 @@ function CollectionCreatePanel({
   error: string | null;
   running: boolean;
   onSubmit: () => void;
+  onBatchMint: (col: PlatformCollection) => void;
 }) {
   return (
     <div className="space-y-4 rounded-lg border border-border bg-secondary/20 p-4">
@@ -869,13 +917,15 @@ function CollectionCreatePanel({
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {result ? (
-        <div className="rounded-md border border-accent/40 bg-accent/10 p-3 text-sm space-y-1">
+        <div className="rounded-md border border-accent/40 bg-accent/10 p-3 text-sm space-y-2">
           <div className="flex items-center gap-2 font-medium text-accent">
             <CheckCircle2 className="h-4 w-4" /> Collection created!
           </div>
           <div className="font-mono text-xs text-muted-foreground">ID: {result.id}</div>
           <div className="font-mono text-xs text-muted-foreground">Issuer: {result.issuer}</div>
-          <p className="text-xs text-muted-foreground">Use this collection ID when batch minting to add NFTs to it.</p>
+          <Button size="sm" className="w-full mt-1" onClick={() => onBatchMint(result)}>
+            <LayoutGrid className="h-4 w-4" /> Batch mint into this collection
+          </Button>
         </div>
       ) : (
         <Button onClick={onSubmit} disabled={running || !name.trim()} className="w-full">

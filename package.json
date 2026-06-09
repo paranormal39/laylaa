@@ -30,7 +30,7 @@
     "concurrently": "^9.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.15.0",

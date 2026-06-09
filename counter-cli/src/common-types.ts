@@ -13,17 +13,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Counter, type CounterPrivateState } from '@midnight-ntwrk/counter-contract';
+import { GxgNight } from '@midnight-ntwrk/counter-contract';
+import type { GxgNightPrivateState } from '@midnight-ntwrk/counter-contract';
 import type { MidnightProviders } from '@midnight-ntwrk/midnight-js/types';
 import type { DeployedContract, FoundContract } from '@midnight-ntwrk/midnight-js/contracts';
 import type { ProvableCircuitId } from '@midnight-ntwrk/compact-js';
 
-export type CounterCircuits = ProvableCircuitId<Counter.Contract<CounterPrivateState>>;
+export type GxgNightCircuits = ProvableCircuitId<GxgNight.Contract<GxgNightPrivateState>>;
 
-export const CounterPrivateStateId = 'counterPrivateState';
+export const GxgNightPrivateStateId = 'gxgnightPrivateState';
 
-export type CounterProviders = MidnightProviders<CounterCircuits, typeof CounterPrivateStateId, CounterPrivateState>;
+export type GxgNightProviders = MidnightProviders<GxgNightCircuits, typeof GxgNightPrivateStateId, GxgNightPrivateState>;
 
-export type CounterContract = Counter.Contract<CounterPrivateState>;
+export type GxgNightContract = GxgNight.Contract<GxgNightPrivateState>;
 
-export type DeployedCounterContract = DeployedContract<CounterContract> | FoundContract<CounterContract>;
+export type DeployedGxgNightContract = DeployedContract<GxgNightContract> | FoundContract<GxgNightContract>;

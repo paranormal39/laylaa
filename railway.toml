@@ -1,0 +1,12 @@
+[build]
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "npx tsx src/index.ts"
+healthcheckPath = "/api/tokens"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "layla-backend"

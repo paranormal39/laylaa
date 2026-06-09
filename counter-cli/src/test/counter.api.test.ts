@@ -16,11 +16,12 @@
 import { type WalletContext } from '../api';
 import path from 'path';
 import * as api from '../api';
-import { type CounterProviders } from '../common-types';
+import { type GxgNightProviders } from '../common-types';
 import { currentDir } from '../config';
 import { createLogger } from '../logger-utils';
 import { TestEnvironment } from './commons';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { randomBytes } from 'node:crypto';
 
 const logDir = path.resolve(currentDir, '..', 'logs', 'tests', `${new Date().toISOString()}.log`);
 const logger = await createLogger(logDir);
@@ -28,7 +29,7 @@ const logger = await createLogger(logDir);
 describe('API', () => {
   let testEnvironment: TestEnvironment;
   let walletCtx: WalletContext;
-  let providers: CounterProviders;
+  let providers: GxgNightProviders;
 
   beforeAll(
     async () => {
@@ -45,20 +46,17 @@ describe('API', () => {
     await testEnvironment.shutdown();
   });
 
-  it('should deploy the contract and increment the counter [@slow]', async () => {
-    const counterContract = await api.deploy(providers, { privateCounter: 0 });
-    expect(counterContract).not.toBeNull();
+  it('should deploy the gxgnight contract and claim a score [@slow]', async () => {
+    const secretKey = randomBytes(32);
+    const gxgnightContract = await api.deployGxgNight(providers, secretKey);
+    expect(gxgnightContract).not.toBeNull();
 
-    const counter = await api.displayCounterValue(providers, counterContract);
-    expect(counter.counterValue).toEqual(BigInt(0));
-
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const response = await api.increment(counterContract);
-    expect(response.txHash).toMatch(/[0-9a-f]{64}/);
+    const scoreId = randomBytes(32);
+    const response = await api.claimScore(gxgnightContract, 100n, scoreId);
+    expect(response.txId).toMatch(/[0-9a-f]+/);
     expect(response.blockHeight).toBeGreaterThan(BigInt(0));
 
-    const counterAfter = await api.displayCounterValue(providers, counterContract);
-    expect(counterAfter.counterValue).toEqual(BigInt(1));
-    expect(counterAfter.contractAddress).toEqual(counter.contractAddress);
+    const { totalSupply } = await api.displayTokenBalance(providers, gxgnightContract);
+    expect(totalSupply).toEqual(BigInt(100));
   });
 });

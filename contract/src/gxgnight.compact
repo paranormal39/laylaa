@@ -1,0 +1,43 @@
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+// ===== Public ledger state =====
+// Token balances keyed by recipient (public key or contract address)
+export ledger balances: Map<Either<ZswapCoinPublicKey, ContractAddress>, Uint<64>>;
+// Total tokens ever minted (unlimited supply)
+export ledger totalSupply: Uint<64>;
+// Spent claim nullifiers: prevents the same committed score being claimed twice
+export ledger nullifiers: Set<Bytes<32>>;
+
+// ===== Private witnesses =====
+// The player secret, used to derive an unlinkable, non-replayable nullifier
+witness playerSecretKey(): Bytes<32>;
+
+// Safe balance read: returns 0 when the account has no entry
+export circuit balanceOf(account: Either<ZswapCoinPublicKey, ContractAddress>): Uint<64> {
+  if (balances.member(disclose(account))) {
+    return balances.lookup(disclose(account));
+  }
+  return 0;
+}
+
+// Commit your score and mint that many tokens to your own wallet.
+// scoreId identifies the game session; each (secret, scoreId) claim is one-time.
+export circuit claimScore(score: Uint<64>, scoreId: Bytes<32>): [] {
+  // Derive the nullifier in-circuit from the private secret + the score session id
+  const sk = playerSecretKey();
+  const nullifier = persistentHash<Vector<2, Bytes<32>>>([sk, scoreId]);
+
+  // Replay protection: this committed score can only be claimed once
+  assert(!nullifiers.member(disclose(nullifier)), "gxgnight: score already claimed");
+  nullifiers.insert(disclose(nullifier));
+
+  // Mint score tokens to the caller's own wallet
+  const recipient = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  const prev = balanceOf(recipient);
+  const newBalance = (prev + score) as Uint<64>;
+  const newSupply = (totalSupply + score) as Uint<64>;
+  balances.insert(disclose(recipient), disclose(newBalance));
+  totalSupply = disclose(newSupply);
+}

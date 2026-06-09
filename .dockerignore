@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+**/.cache
+packages/web/.env
+packages/xaman-backend/.env
+packages/xaman-backend/data
+contracts
+packages/nftmarket-cli
+counter-cli
+.git
+*.log

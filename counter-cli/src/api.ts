@@ -16,7 +16,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { type ContractAddress } from '@midnight-ntwrk/compact-runtime';
-import { Counter, type CounterPrivateState, witnesses } from '@midnight-ntwrk/counter-contract';
+import { GxgNight, type GxgNightPrivateState, gxgNightWitnesses } from '@midnight-ntwrk/counter-contract';
 import * as ledger from '@midnight-ntwrk/ledger-v8';
 import { unshieldedToken } from '@midnight-ntwrk/ledger-v8';
 import { deployContract, findDeployedContract } from '@midnight-ntwrk/midnight-js/contracts';
@@ -39,11 +39,10 @@ import { type Logger } from 'pino';
 import * as Rx from 'rxjs';
 import { WebSocket } from 'ws';
 import {
-  type CounterCircuits,
-  type CounterContract,
-  CounterPrivateStateId,
-  type CounterProviders,
-  type DeployedCounterContract,
+  type GxgNightCircuits,
+  GxgNightPrivateStateId,
+  type GxgNightProviders,
+  type DeployedGxgNightContract,
 } from './common-types';
 import { type Config, contractConfig } from './config';
 import { levelPrivateStateProvider } from '@midnight-ntwrk/midnight-js-level-private-state-provider';
@@ -64,9 +63,9 @@ let logger: Logger;
 // @ts-expect-error: It's needed to enable WebSocket usage through apollo
 globalThis.WebSocket = WebSocket;
 
-// Pre-compile the counter contract with ZK circuit assets
-const counterCompiledContract = CompiledContract.make('counter', Counter.Contract).pipe(
-  CompiledContract.withVacantWitnesses,
+// Pre-compile the gxgnight contract with ZK circuit assets
+const gxgnightCompiledContract = CompiledContract.make('gxgnight', GxgNight.Contract).pipe(
+  CompiledContract.withWitnesses(gxgNightWitnesses),
   CompiledContract.withCompiledFileAssets(contractConfig.zkConfigPath),
 );
 
@@ -77,68 +76,74 @@ export interface WalletContext {
   unshieldedKeystore: UnshieldedKeystore;
 }
 
-export const getCounterLedgerState = async (
-  providers: CounterProviders,
+export const getGxgNightTotalSupply = async (
+  providers: GxgNightProviders,
   contractAddress: ContractAddress,
 ): Promise<bigint | null> => {
   assertIsContractAddress(contractAddress);
-  logger.info('Checking contract ledger state...');
-  const state = await providers.publicDataProvider
+  logger.info('Checking gxgnight ledger state...');
+  const supply = await providers.publicDataProvider
     .queryContractState(contractAddress)
-    .then((contractState) => (contractState != null ? Counter.ledger(contractState.data).round : null));
-  logger.info(`Ledger state: ${state}`);
-  return state;
+    .then((contractState) => {
+      if (contractState == null) return null;
+      return GxgNight.ledger(contractState.data).totalSupply;
+    });
+  logger.info(`Total supply: ${supply}`);
+  return supply;
 };
 
-export const counterContractInstance: CounterContract = new Counter.Contract(witnesses);
-
-export const joinContract = async (
-  providers: CounterProviders,
+export const joinGxgNight = async (
+  providers: GxgNightProviders,
   contractAddress: string,
-): Promise<DeployedCounterContract> => {
-  const counterContract = await findDeployedContract(providers, {
+  secretKey: Uint8Array,
+): Promise<DeployedGxgNightContract> => {
+  const contract = await findDeployedContract(providers, {
     contractAddress,
-    compiledContract: counterCompiledContract,
-    privateStateId: 'counterPrivateState',
-    initialPrivateState: { privateCounter: 0 },
+    compiledContract: gxgnightCompiledContract,
+    privateStateId: GxgNightPrivateStateId,
+    initialPrivateState: { secretKey },
   });
-  logger.info(`Joined contract at address: ${counterContract.deployTxData.public.contractAddress}`);
-  return counterContract;
+  logger.info(`Joined gxgnight contract at address: ${contract.deployTxData.public.contractAddress}`);
+  return contract;
 };
 
-export const deploy = async (
-  providers: CounterProviders,
-  privateState: CounterPrivateState,
-): Promise<DeployedCounterContract> => {
-  logger.info('Deploying counter contract...');
-  const counterContract = await deployContract(providers, {
-    compiledContract: counterCompiledContract,
-    privateStateId: 'counterPrivateState',
-    initialPrivateState: privateState,
+export const deployGxgNight = async (
+  providers: GxgNightProviders,
+  secretKey: Uint8Array,
+): Promise<DeployedGxgNightContract> => {
+  logger.info('Deploying gxgnight contract...');
+  const contract = await deployContract(providers, {
+    compiledContract: gxgnightCompiledContract,
+    privateStateId: GxgNightPrivateStateId,
+    initialPrivateState: { secretKey },
   });
-  logger.info(`Deployed contract at address: ${counterContract.deployTxData.public.contractAddress}`);
-  return counterContract;
+  logger.info(`Deployed gxgnight contract at address: ${contract.deployTxData.public.contractAddress}`);
+  return contract;
 };
 
-export const increment = async (counterContract: DeployedCounterContract): Promise<FinalizedTxData> => {
-  logger.info('Incrementing...');
-  const finalizedTxData = await counterContract.callTx.increment();
+export const claimScore = async (
+  contract: DeployedGxgNightContract,
+  score: bigint,
+  scoreId: Uint8Array,
+): Promise<FinalizedTxData> => {
+  logger.info(`Claiming score: ${score}`);
+  const finalizedTxData = await contract.callTx.claimScore(score as unknown as any, scoreId as unknown as any);
   logger.info(`Transaction ${finalizedTxData.public.txId} added in block ${finalizedTxData.public.blockHeight}`);
   return finalizedTxData.public;
 };
 
-export const displayCounterValue = async (
-  providers: CounterProviders,
-  counterContract: DeployedCounterContract,
-): Promise<{ counterValue: bigint | null; contractAddress: string }> => {
-  const contractAddress = counterContract.deployTxData.public.contractAddress;
-  const counterValue = await getCounterLedgerState(providers, contractAddress);
-  if (counterValue === null) {
-    logger.info(`There is no counter contract deployed at ${contractAddress}.`);
+export const displayTokenBalance = async (
+  providers: GxgNightProviders,
+  contract: DeployedGxgNightContract,
+): Promise<{ totalSupply: bigint | null; contractAddress: string }> => {
+  const contractAddress = contract.deployTxData.public.contractAddress;
+  const totalSupply = await getGxgNightTotalSupply(providers, contractAddress);
+  if (totalSupply === null) {
+    logger.info(`No gxgnight contract deployed at ${contractAddress}.`);
   } else {
-    logger.info(`Current counter value: ${Number(counterValue)}`);
+    logger.info(`Total supply: ${totalSupply}`);
   }
-  return { contractAddress, counterValue };
+  return { contractAddress, totalSupply };
 };
 
 /**
@@ -528,14 +533,14 @@ ${DIV}
  */
 export const configureProviders = async (ctx: WalletContext, config: Config) => {
   const walletAndMidnightProvider = await createWalletAndMidnightProvider(ctx);
-  const zkConfigProvider = new NodeZkConfigProvider<CounterCircuits>(contractConfig.zkConfigPath);
+  const zkConfigProvider = new NodeZkConfigProvider<GxgNightCircuits>(contractConfig.zkConfigPath);
   // accountId and privateStoragePasswordProvider are required by levelPrivateStateProvider.
   // The coin public key is encoded as base64 for the password — base64 output covers all
   // four character classes and avoids repeated-character runs found in raw hex strings.
   const accountId = walletAndMidnightProvider.getCoinPublicKey();
   const storagePassword = `${Buffer.from(accountId, 'hex').toString('base64')}!`;
   return {
-    privateStateProvider: levelPrivateStateProvider<typeof CounterPrivateStateId>({
+    privateStateProvider: levelPrivateStateProvider<typeof GxgNightPrivateStateId>({
       privateStateStoreName: contractConfig.privateStateStoreName,
       accountId,
       privateStoragePasswordProvider: () => storagePassword,

@@ -1,0 +1,194 @@
+// Collection contract for the XRPL + Midnight NFT Marketplace
+// SPDX-License-Identifier: Apache-2.0
+//
+// Registers NFT collections and their metadata/royalty config in public ledger
+// state. Written against verified Compact syntax (compiler 0.30).
+//
+// NOTE: Compact has no `Nat`, no `Option`, no object `type X = {}`. We use
+// `Uint<N>`, `Maybe<T>`, `struct`, `Boolean`, and explicit `as` casts.
+
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+export type Owner = Either<ZswapCoinPublicKey, ContractAddress>;
+export type CollectionId = Bytes<32>;
+export type MetadataCID = Bytes<64>;
+
+// Collection record. `maxSupply` of 0 means unlimited.
+export struct CollectionData {
+  name: Bytes<64>,
+  symbol: Bytes<16>,
+  description: Bytes<256>,
+  metadataCID: MetadataCID,
+  creator: Owner,
+  isVerified: Boolean,
+  isApprovedForMigration: Boolean,
+  royaltyBps: Uint<16>,
+  maxSupply: Uint<64>,
+  currentSupply: Uint<64>,
+  isPaused: Boolean
+}
+
+// ============================================================================
+// PUBLIC LEDGER STATE
+// ============================================================================
+
+export ledger collections: Map<CollectionId, CollectionData>;
+export ledger admin: Owner;
+export ledger initialized: Boolean;
+export ledger collectionCount: Counter;
+
+// ============================================================================
+// ADMIN
+// ============================================================================
+
+// First caller becomes admin.
+export circuit initialize(): [] {
+  assert(!initialized, "collection: already initialized");
+  admin = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  initialized = true;
+}
+
+// ============================================================================
+// COLLECTION MANAGEMENT
+// ============================================================================
+
+// Create a new collection.
+export circuit createCollection(
+  collectionId: CollectionId,
+  name: Bytes<64>,
+  symbol: Bytes<16>,
+  description: Bytes<256>,
+  metadataCID: MetadataCID,
+  royaltyBps: Uint<16>,
+  maxSupply: Uint<64>
+): [] {
+  const id = disclose(collectionId);
+  assert(!collections.member(id), "collection: already exists");
+  assert(disclose(royaltyBps) <= 1000, "collection: royalty too high"); // max 10%
+
+  const creator = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  const data = CollectionData {
+    name: disclose(name),
+    symbol: disclose(symbol),
+    description: disclose(description),
+    metadataCID: disclose(metadataCID),
+    creator: creator,
+    isVerified: false,
+    isApprovedForMigration: false,
+    royaltyBps: disclose(royaltyBps),
+    maxSupply: disclose(maxSupply),
+    currentSupply: 0,
+    isPaused: false
+  };
+  collections.insert(id, data);
+  collectionCount += 1;
+}
+
+// Verify a collection (admin only).
+export circuit verifyCollection(collectionId: CollectionId): [] {
+  const id = disclose(collectionId);
+  assert(collections.member(id), "collection: not found");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(admin == caller, "collection: not admin");
+
+  const existing = collections.lookup(id);
+  collections.insert(id, CollectionData {
+    name: existing.name,
+    symbol: existing.symbol,
+    description: existing.description,
+    metadataCID: existing.metadataCID,
+    creator: existing.creator,
+    isVerified: true,
+    isApprovedForMigration: existing.isApprovedForMigration,
+    royaltyBps: existing.royaltyBps,
+    maxSupply: existing.maxSupply,
+    currentSupply: existing.currentSupply,
+    isPaused: existing.isPaused
+  });
+}
+
+// Approve a collection for XRPL <-> Midnight migration (admin only).
+export circuit approveForMigration(collectionId: CollectionId): [] {
+  const id = disclose(collectionId);
+  assert(collections.member(id), "collection: not found");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(admin == caller, "collection: not admin");
+
+  const existing = collections.lookup(id);
+  collections.insert(id, CollectionData {
+    name: existing.name,
+    symbol: existing.symbol,
+    description: existing.description,
+    metadataCID: existing.metadataCID,
+    creator: existing.creator,
+    isVerified: existing.isVerified,
+    isApprovedForMigration: true,
+    royaltyBps: existing.royaltyBps,
+    maxSupply: existing.maxSupply,
+    currentSupply: existing.currentSupply,
+    isPaused: existing.isPaused
+  });
+}
+
+// Increment a collection's minted supply. Enforces maxSupply (0 = unlimited).
+export circuit incrementSupply(collectionId: CollectionId, amount: Uint<64>): [] {
+  const id = disclose(collectionId);
+  assert(collections.member(id), "collection: not found");
+
+  const existing = collections.lookup(id);
+  const newSupply = (existing.currentSupply + disclose(amount)) as Uint<64>;
+  assert(
+    existing.maxSupply == 0 || newSupply <= existing.maxSupply,
+    "collection: would exceed max supply"
+  );
+  collections.insert(id, CollectionData {
+    name: existing.name,
+    symbol: existing.symbol,
+    description: existing.description,
+    metadataCID: existing.metadataCID,
+    creator: existing.creator,
+    isVerified: existing.isVerified,
+    isApprovedForMigration: existing.isApprovedForMigration,
+    royaltyBps: existing.royaltyBps,
+    maxSupply: existing.maxSupply,
+    currentSupply: newSupply,
+    isPaused: existing.isPaused
+  });
+}
+
+// Pause / unpause a collection (creator or admin).
+export circuit setPaused(collectionId: CollectionId, paused: Boolean): [] {
+  const id = disclose(collectionId);
+  assert(collections.member(id), "collection: not found");
+
+  const existing = collections.lookup(id);
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(existing.creator == caller || admin == caller, "collection: not authorized");
+
+  collections.insert(id, CollectionData {
+    name: existing.name,
+    symbol: existing.symbol,
+    description: existing.description,
+    metadataCID: existing.metadataCID,
+    creator: existing.creator,
+    isVerified: existing.isVerified,
+    isApprovedForMigration: existing.isApprovedForMigration,
+    royaltyBps: existing.royaltyBps,
+    maxSupply: existing.maxSupply,
+    currentSupply: existing.currentSupply,
+    isPaused: disclose(paused)
+  });
+}
+
+// Read a collection (asserts existence).
+export circuit getCollection(collectionId: CollectionId): CollectionData {
+  const id = disclose(collectionId);
+  assert(collections.member(id), "collection: not found");
+  return collections.lookup(id);
+}

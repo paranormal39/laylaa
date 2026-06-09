@@ -1,0 +1,92 @@
+// NFT contract for the XRPL + Midnight NFT Marketplace
+// SPDX-License-Identifier: Apache-2.0
+//
+// A minimal, public-ownership NFT contract written against verified Compact
+// 0.23 syntax (compiler 0.31). Ownership and metadata CIDs are tracked in
+// public ledger state. Designed to be deployed/exercised from nftmarket-cli.
+
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+// An owner can be a user (Zswap coin public key) or a contract address.
+export type Owner = Either<ZswapCoinPublicKey, ContractAddress>;
+
+// ===== Public ledger state =====
+// tokenId -> owner
+export ledger ownerOf: Map<Bytes<32>, Owner>;
+// tokenId -> IPFS metadata CID (utf-8 bytes, padded to 64)
+export ledger metadataOf: Map<Bytes<32>, Bytes<64>>;
+// tokenId -> approved operator
+export ledger approvedOf: Map<Bytes<32>, Owner>;
+// total number of NFTs currently in existence
+export ledger totalSupply: Counter;
+
+// Mint a new NFT to `to` with the given metadata CID.
+export circuit mint(tokenId: Bytes<32>, to: Owner, metadataCID: Bytes<64>): [] {
+  const id = disclose(tokenId);
+  assert(!ownerOf.member(id), "nft: token already exists");
+  ownerOf.insert(id, disclose(to));
+  metadataOf.insert(id, disclose(metadataCID));
+  totalSupply += 1;
+}
+
+// Read the owner of a token (asserts existence).
+export circuit ownerOfToken(tokenId: Bytes<32>): Owner {
+  const id = disclose(tokenId);
+  assert(ownerOf.member(id), "nft: nonexistent token");
+  return ownerOf.lookup(id);
+}
+
+// Transfer a token the caller owns to `to`.
+export circuit transfer(to: Owner, tokenId: Bytes<32>): [] {
+  const id = disclose(tokenId);
+  assert(ownerOf.member(id), "nft: nonexistent token");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(ownerOf.lookup(id) == caller, "nft: caller is not the owner");
+  ownerOf.insert(id, disclose(to));
+  if (approvedOf.member(id)) {
+    approvedOf.remove(id);
+  }
+}
+
+// Approve `spender` to transfer a specific token on the caller's behalf.
+export circuit approve(spender: Owner, tokenId: Bytes<32>): [] {
+  const id = disclose(tokenId);
+  assert(ownerOf.member(id), "nft: nonexistent token");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(ownerOf.lookup(id) == caller, "nft: caller is not the owner");
+  approvedOf.insert(id, disclose(spender));
+}
+
+// Transfer a token on behalf of its owner (caller must be owner or approved).
+export circuit transferFrom(fromOwner: Owner, to: Owner, tokenId: Bytes<32>): [] {
+  const id = disclose(tokenId);
+  assert(ownerOf.member(id), "nft: nonexistent token");
+  const owner = ownerOf.lookup(id);
+  assert(owner == disclose(fromOwner), "nft: from is not the owner");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  const isOwner = owner == caller;
+  const isApproved = approvedOf.member(id) && approvedOf.lookup(id) == caller;
+  assert(isOwner || isApproved, "nft: caller not authorized");
+  ownerOf.insert(id, disclose(to));
+  if (approvedOf.member(id)) {
+    approvedOf.remove(id);
+  }
+}
+
+// Burn a token the caller owns.
+export circuit burn(tokenId: Bytes<32>): [] {
+  const id = disclose(tokenId);
+  assert(ownerOf.member(id), "nft: nonexistent token");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(ownerOf.lookup(id) == caller, "nft: caller is not the owner");
+  ownerOf.remove(id);
+  if (metadataOf.member(id)) {
+    metadataOf.remove(id);
+  }
+  if (approvedOf.member(id)) {
+    approvedOf.remove(id);
+  }
+  totalSupply -= 1;
+}

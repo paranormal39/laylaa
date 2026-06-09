@@ -1,0 +1,197 @@
+// Marketplace contract for the XRPL + Midnight NFT Marketplace
+// SPDX-License-Identifier: Apache-2.0
+//
+// A fixed-price marketplace written against verified Compact syntax
+// (compiler 0.30). Listings live in public ledger state; this contract is the
+// authoritative listing book. Payment settlement and NFT custody are handled
+// via the NFT contract / off-chain orchestration in nftmarket-cli.
+//
+// NOTE: Compact has no `Nat`, no `Option`, no object `type X = {}`, no
+// `if`-as-expression and no block-time access. We use `Uint<N>`, `Maybe<T>`,
+// `struct`, ternaries, and an `enum` for status instead.
+
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+// A seller/buyer can be a user (Zswap coin public key) or a contract address.
+export type Owner = Either<ZswapCoinPublicKey, ContractAddress>;
+export type ListingId = Bytes<32>;
+export type TokenId = Bytes<32>;
+
+// Listing status.
+export enum ListingStatus { active, sold, cancelled }
+
+// A fixed-price listing.
+export struct Listing {
+  seller: Owner,
+  nftContract: Bytes<32>,
+  tokenId: TokenId,
+  price: Uint<64>,
+  currency: Bytes<10>,
+  status: ListingStatus,
+  buyer: Maybe<Owner>
+}
+
+// ============================================================================
+// PUBLIC LEDGER STATE
+// ============================================================================
+
+export ledger listings: Map<ListingId, Listing>;
+export ledger admin: Owner;
+export ledger platformFeeRecipient: Owner;
+export ledger initialized: Boolean;
+export ledger isPaused: Boolean;
+export ledger platformFeeBps: Uint<16>; // basis points, max 1000 (10%)
+export ledger listingCount: Counter;
+export ledger volumeNight: Counter; // cumulative settled volume (informational)
+
+// ============================================================================
+// ADMIN
+// ============================================================================
+
+// First caller becomes admin, sets the fee and fee recipient.
+export circuit initialize(feeBps: Uint<16>): [] {
+  assert(!initialized, "marketplace: already initialized");
+  assert(disclose(feeBps) <= 1000, "marketplace: fee too high");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  admin = caller;
+  platformFeeRecipient = caller;
+  platformFeeBps = disclose(feeBps);
+  initialized = true;
+  isPaused = false;
+}
+
+export circuit setPlatformFee(feeBps: Uint<16>): [] {
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(admin == caller, "marketplace: not admin");
+  assert(disclose(feeBps) <= 1000, "marketplace: fee too high");
+  platformFeeBps = disclose(feeBps);
+}
+
+export circuit setPlatformFeeRecipient(recipient: Owner): [] {
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(admin == caller, "marketplace: not admin");
+  platformFeeRecipient = disclose(recipient);
+}
+
+export circuit setPaused(paused: Boolean): [] {
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(admin == caller, "marketplace: not admin");
+  isPaused = disclose(paused);
+}
+
+// ============================================================================
+// LISTING MANAGEMENT
+// ============================================================================
+
+// Create a fixed-price listing for an NFT the caller owns.
+export circuit createListing(
+  listingId: ListingId,
+  nftContract: Bytes<32>,
+  tokenId: TokenId,
+  price: Uint<64>,
+  currency: Bytes<10>
+): [] {
+  assert(!isPaused, "marketplace: paused");
+  const id = disclose(listingId);
+  assert(!listings.member(id), "marketplace: listing exists");
+  assert(disclose(price) > 0, "marketplace: price must be > 0");
+
+  const seller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  const listing = Listing {
+    seller: seller,
+    nftContract: disclose(nftContract),
+    tokenId: disclose(tokenId),
+    price: disclose(price),
+    currency: disclose(currency),
+    status: ListingStatus.active,
+    buyer: none<Owner>()
+  };
+  listings.insert(id, listing);
+  listingCount += 1;
+}
+
+// Update the price of an active listing (seller only).
+export circuit editListing(listingId: ListingId, newPrice: Uint<64>): [] {
+  assert(!isPaused, "marketplace: paused");
+  const id = disclose(listingId);
+  assert(listings.member(id), "marketplace: listing not found");
+  assert(disclose(newPrice) > 0, "marketplace: price must be > 0");
+
+  const listing = listings.lookup(id);
+  assert(listing.status == ListingStatus.active, "marketplace: listing not active");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(listing.seller == caller, "marketplace: not seller");
+
+  listings.insert(id, Listing {
+    seller: listing.seller,
+    nftContract: listing.nftContract,
+    tokenId: listing.tokenId,
+    price: disclose(newPrice),
+    currency: listing.currency,
+    status: listing.status,
+    buyer: listing.buyer
+  });
+}
+
+// Cancel an active listing (seller or admin).
+export circuit cancelListing(listingId: ListingId): [] {
+  const id = disclose(listingId);
+  assert(listings.member(id), "marketplace: listing not found");
+
+  const listing = listings.lookup(id);
+  assert(listing.status == ListingStatus.active, "marketplace: listing not active");
+  const caller = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(listing.seller == caller || admin == caller, "marketplace: not authorized");
+
+  listings.insert(id, Listing {
+    seller: listing.seller,
+    nftContract: listing.nftContract,
+    tokenId: listing.tokenId,
+    price: listing.price,
+    currency: listing.currency,
+    status: ListingStatus.cancelled,
+    buyer: listing.buyer
+  });
+}
+
+// Buy an active listing. Records the buyer and marks the listing sold.
+export circuit buyListing(listingId: ListingId): [] {
+  assert(!isPaused, "marketplace: paused");
+  const id = disclose(listingId);
+  assert(listings.member(id), "marketplace: listing not found");
+
+  const listing = listings.lookup(id);
+  assert(listing.status == ListingStatus.active, "marketplace: listing not active");
+  const buyer = left<ZswapCoinPublicKey, ContractAddress>(ownPublicKey());
+  assert(listing.seller != buyer, "marketplace: cannot buy own listing");
+
+  listings.insert(id, Listing {
+    seller: listing.seller,
+    nftContract: listing.nftContract,
+    tokenId: listing.tokenId,
+    price: listing.price,
+    currency: listing.currency,
+    status: ListingStatus.sold,
+    buyer: some<Owner>(buyer)
+  });
+  volumeNight += 1;
+}
+
+// Read a listing (asserts existence).
+export circuit getListing(listingId: ListingId): Listing {
+  const id = disclose(listingId);
+  assert(listings.member(id), "marketplace: listing not found");
+  return listings.lookup(id);
+}
+
+// Compute price * platformFeeBps. Compact has no division operator, so the
+// caller divides this product by 10000 off-chain to obtain the actual fee.
+export circuit quotePlatformFeeNumerator(price: Uint<64>): Uint<80> {
+  return (disclose(price) * (platformFeeBps as Uint<64>)) as Uint<80>;
+}

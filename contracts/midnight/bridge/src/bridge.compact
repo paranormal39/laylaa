@@ -1,0 +1,55 @@
+// Bridge contract: XRPL-to-Midnight Burn-To-Mint
+// SPDX-License-Identifier: Apache-2.0
+//
+// Records verified XRPL NFT burns (by their burn transaction hash) so the
+// wrapped NFT can be minted exactly once on Midnight. Replay is prevented by
+// tracking processed burn hashes. The CLI orchestrates: burn on XRPL ->
+// redeemBurn here -> mint on the NFT contract using the returned token id.
+
+pragma language_version >= 0.20;
+
+import CompactStandardLibrary;
+
+export type XRPLTxHash = Bytes<32>;
+
+// ===== Public ledger state =====
+export ledger admin: Bytes<32>;            // admin's Zswap coin public key bytes
+export ledger adminSet: Boolean;
+export ledger isPaused: Boolean;
+export ledger processedBurns: Set<Bytes<32>>;        // XRPL burn tx hashes already redeemed
+export ledger metadataFor: Map<Bytes<32>, Bytes<64>>; // burn hash -> metadata CID
+export ledger migrationCount: Counter;
+
+// First caller becomes the admin.
+export circuit initialize(): [] {
+  assert(!adminSet, "bridge: already initialized");
+  admin = disclose(ownPublicKey().bytes);
+  adminSet = true;
+  isPaused = false;
+}
+
+export circuit setPaused(paused: Boolean): [] {
+  assert(adminSet, "bridge: not initialized");
+  assert(ownPublicKey().bytes == admin, "bridge: not admin");
+  isPaused = disclose(paused);
+}
+
+// Redeem an XRPL burn: records the burn hash + metadata and returns the wrapped
+// token id (the burn hash itself, which is globally unique). Reverts on replay.
+export circuit redeemBurn(burnTxHash: XRPLTxHash, metadataCID: Bytes<64>): Bytes<32> {
+  assert(!isPaused, "bridge: paused");
+  assert(!processedBurns.member(disclose(burnTxHash)), "bridge: burn already redeemed");
+  processedBurns.insert(disclose(burnTxHash));
+  metadataFor.insert(disclose(burnTxHash), disclose(metadataCID));
+  migrationCount += 1;
+  return disclose(burnTxHash);
+}
+
+export circuit isRedeemed(burnTxHash: XRPLTxHash): Boolean {
+  return processedBurns.member(disclose(burnTxHash));
+}
+
+export circuit metadataOfBurn(burnTxHash: XRPLTxHash): Bytes<64> {
+  assert(processedBurns.member(disclose(burnTxHash)), "bridge: burn not redeemed");
+  return metadataFor.lookup(disclose(burnTxHash));
+}

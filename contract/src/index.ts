@@ -14,4 +14,6 @@
 // limitations under the License.
 
 export * as Counter from "./managed/counter/contract/index.js";
+export * as GxgNight from "./managed/gxgnight/contract/index.js";
 export * from "./witnesses";
+export * from "./gxgnight-witnesses";

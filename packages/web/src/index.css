@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Laylaa brand tokens ──────────────────────────────────────────────────── */
+@layer base {
+  /* Light — warm cream × deep brown × gold */
+  :root {
+    --background:            36 47% 95%;
+    --foreground:            24 30% 14%;
+    --card:                  36 50% 98%;
+    --card-foreground:       24 30% 14%;
+    --border:                33 25% 84%;
+    --input:                 33 25% 84%;
+    --ring:                  29 42% 52%;
+    --primary:               24 30% 18%;
+    --primary-foreground:    36 47% 96%;
+    --secondary:             34 30% 90%;
+    --secondary-foreground:  24 30% 18%;
+    --muted:                 34 30% 90%;
+    --muted-foreground:      24 12% 46%;
+    --accent:                29 42% 52%;
+    --accent-foreground:     0 0% 100%;
+    --destructive:           0 72% 51%;
+    --destructive-foreground:0 0% 98%;
+  }
+
+  /* Dark — deep charcoal-brown × parchment × same gold */
+  .dark {
+    --background:            24 18% 9%;
+    --foreground:            36 28% 88%;
+    --card:                  24 16% 12%;
+    --card-foreground:       36 28% 88%;
+    --border:                24 14% 22%;
+    --input:                 24 14% 22%;
+    --ring:                  29 42% 52%;
+    --primary:               36 38% 78%;
+    --primary-foreground:    24 18% 9%;
+    --secondary:             24 14% 17%;
+    --secondary-foreground:  36 28% 88%;
+    --muted:                 24 14% 17%;
+    --muted-foreground:      24 10% 54%;
+    --accent:                29 42% 52%;
+    --accent-foreground:     0 0% 100%;
+    --destructive:           0 60% 42%;
+    --destructive-foreground:0 0% 98%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}

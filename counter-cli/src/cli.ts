@@ -18,9 +18,10 @@ import { stdin as input, stdout as output } from 'node:process';
 import { createInterface, type Interface } from 'node:readline/promises';
 import { type Logger } from 'pino';
 import { type StartedDockerComposeEnvironment, type DockerComposeEnvironment } from 'testcontainers';
-import { type CounterProviders, type DeployedCounterContract } from './common-types';
+import { type GxgNightProviders, type DeployedGxgNightContract } from './common-types';
 import { type Config, StandaloneConfig } from './config';
 import * as api from './api';
+import { randomBytes } from 'node:crypto';
 
 let logger: Logger;
 
@@ -35,9 +36,9 @@ const GENESIS_MINT_WALLET_SEED = '0000000000000000000000000000000000000000000000
 const BANNER = `
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║              Midnight Counter Example                        ║
+║              GxgNight Token Contract                         ║
 ║              ─────────────────────                           ║
-║              A privacy-preserving smart contract demo        ║
+║              ZK-powered score-to-token minting on Midnight   ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 `;
@@ -61,20 +62,20 @@ const contractMenu = (dustBalance: string) => `
 ${DIVIDER}
   Contract Actions${dustBalance ? `                    DUST: ${dustBalance}` : ''}
 ${DIVIDER}
-  [1] Deploy a new counter contract
-  [2] Join an existing counter contract
+  [1] Deploy a new gxgnight contract
+  [2] Join an existing gxgnight contract
   [3] Monitor DUST balance
   [4] Exit
 ${'─'.repeat(62)}
 > `;
 
-/** Build the counter actions menu, showing current DUST balance in the header. */
-const counterMenu = (dustBalance: string) => `
+/** Build the gxgnight actions menu, showing current DUST balance in the header. */
+const gxgnightMenu = (dustBalance: string) => `
 ${DIVIDER}
-  Counter Actions${dustBalance ? `                     DUST: ${dustBalance}` : ''}
+  GxgNight Actions${dustBalance ? `                    DUST: ${dustBalance}` : ''}
 ${DIVIDER}
-  [1] Increment counter
-  [2] Display current counter value
+  [1] Claim score (mint tokens)
+  [2] Display my token balance
   [3] Exit
 ${'─'.repeat(62)}
 > `;
@@ -125,10 +126,10 @@ const getDustLabel = async (wallet: api.WalletContext['wallet']): Promise<string
   }
 };
 
-/** Prompt for a contract address and join an existing deployed contract. */
-const joinContract = async (providers: CounterProviders, rli: Interface): Promise<DeployedCounterContract> => {
+/** Prompt for a contract address and join an existing deployed gxgnight contract. */
+const joinContract = async (providers: GxgNightProviders, rli: Interface, secretKey: Uint8Array): Promise<DeployedGxgNightContract> => {
   const contractAddress = await rli.question('Enter the contract address (hex): ');
-  return await api.joinContract(providers, contractAddress);
+  return await api.joinGxgNight(providers, contractAddress, secretKey);
 };
 
 /**
@@ -148,18 +149,19 @@ const startDustMonitor = async (wallet: api.WalletContext['wallet'], rli: Interf
  * Errors during deploy/join are caught and displayed — the user stays in the menu.
  */
 const deployOrJoin = async (
-  providers: CounterProviders,
+  providers: GxgNightProviders,
   walletCtx: api.WalletContext,
   rli: Interface,
-): Promise<DeployedCounterContract | null> => {
+  secretKey: Uint8Array,
+): Promise<DeployedGxgNightContract | null> => {
   while (true) {
     const dustLabel = await getDustLabel(walletCtx.wallet);
     const choice = await rli.question(contractMenu(dustLabel));
     switch (choice.trim()) {
       case '1':
         try {
-          const contract = await api.withStatus('Deploying counter contract', () =>
-            api.deploy(providers, { privateCounter: 0 }),
+          const contract = await api.withStatus('Deploying gxgnight contract', () =>
+            api.deployGxgNight(providers, secretKey),
           );
           console.log(`  Contract deployed at: ${contract.deployTxData.public.contractAddress}\n`);
           return contract;
@@ -188,7 +190,7 @@ const deployOrJoin = async (
         break;
       case '2':
         try {
-          return await joinContract(providers, rli);
+          return await joinContract(providers, rli, secretKey);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           console.log(`  ✗ Failed to join contract: ${msg}\n`);
@@ -207,28 +209,38 @@ const deployOrJoin = async (
 
 /**
  * Main interaction loop. Once a contract is deployed/joined, the user
- * can increment the counter or query its current value.
+ * can claim a score or query their token balance.
  */
-const mainLoop = async (providers: CounterProviders, walletCtx: api.WalletContext, rli: Interface): Promise<void> => {
-  const counterContract = await deployOrJoin(providers, walletCtx, rli);
-  if (counterContract === null) {
+const mainLoop = async (providers: GxgNightProviders, walletCtx: api.WalletContext, rli: Interface, secretKey: Uint8Array): Promise<void> => {
+  const gxgnightContract = await deployOrJoin(providers, walletCtx, rli, secretKey);
+  if (gxgnightContract === null) {
     return;
   }
 
   while (true) {
     const dustLabel = await getDustLabel(walletCtx.wallet);
-    const choice = await rli.question(counterMenu(dustLabel));
+    const choice = await rli.question(gxgnightMenu(dustLabel));
     switch (choice.trim()) {
       case '1':
         try {
-          await api.withStatus('Incrementing counter', () => api.increment(counterContract));
+          const scoreStr = await rli.question('  Enter score to claim (integer): ');
+          const score = BigInt(scoreStr.trim());
+          const scoreId = randomBytes(32);
+          await api.withStatus(`Claiming score ${score}`, () => api.claimScore(gxgnightContract, score, scoreId));
+          console.log('  ✓ Score claimed and tokens minted.\n');
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          console.log(`  ✗ Increment failed: ${msg}\n`);
+          console.log(`  ✗ Claim failed: ${msg}\n`);
         }
         break;
       case '2':
-        await api.displayCounterValue(providers, counterContract);
+        try {
+          const { totalSupply } = await api.displayTokenBalance(providers, gxgnightContract);
+          console.log(`  Total tokens minted: ${totalSupply ?? 0n}\n`);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.log(`  ✗ Balance query failed: ${msg}\n`);
+        }
         break;
       case '3':
         return;
@@ -267,7 +279,7 @@ export const run = async (config: Config, _logger: Logger, dockerEnv?: DockerCom
   // Print the title banner
   console.log(BANNER);
 
-  const rli = createInterface({ input, output, terminal: true });
+  const rli = createInterface({ input, output });
   let env: StartedDockerComposeEnvironment | undefined;
 
   try {
@@ -290,13 +302,16 @@ export const run = async (config: Config, _logger: Logger, dockerEnv?: DockerCom
       return;
     }
 
+    // Generate a fresh player secret key for this session
+    const secretKey = randomBytes(32);
+
     try {
       // Step 3: Configure midnight-js providers
       const providers = await api.withStatus('Configuring providers', () => api.configureProviders(walletCtx, config));
       console.log('');
 
       // Step 4: Enter the contract interaction loop
-      await mainLoop(providers, walletCtx, rli);
+      await mainLoop(providers, walletCtx, rli, secretKey);
     } catch (e) {
       if (e instanceof Error) {
         logger.error(`Error: ${e.message}`);

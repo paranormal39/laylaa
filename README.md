@@ -1,37 +1,76 @@
-# Counter DApp
+<p align="center">
+  <img src="docs/assets/baner1.png" alt="Layla — cross-chain NFT marketplace" width="100%" />
+</p>
 
-This project is built on the [Midnight Network](https://midnight.network/).
+# Layla
 
-[![Generic badge](https://img.shields.io/badge/Compact%20Toolchain-0.28.0-1abc9c.svg)](https://shields.io/) [![Generic badge](https://img.shields.io/badge/TypeScript-5.8.3-blue.svg)](https://shields.io/)
+A cross-chain NFT marketplace bridging **XRPL** and **Midnight**. Built on the [Midnight Network](https://midnight.network/) with XRPL mainnet/testnet integration.
 
-A Midnight smart contract example demonstrating a simple on-chain counter. The counter uses public ledger state and serves as a starting point for building Midnight DApps.
+[![Generic badge](https://img.shields.io/badge/Compact%20Toolchain-0.30.0-1abc9c.svg)](https://shields.io/) [![Generic badge](https://img.shields.io/badge/TypeScript-5.8.3-blue.svg)](https://shields.io/)
 
-Supports three network targets:
+Layla unifies XRPL and Midnight NFTs in one app: browse and trade XRPL mainnet collections, mint on XRPL Testnet or Midnight Preview, and move assets across chains with a burn-to-mint bridge.
 
-| Network | Description | Command |
-|---------|-------------|---------|
-| **Preprod** | Public testnet (recommended for getting started) | `npm run preprod-ps` |
-| **Preview** | Public preview testnet | `npm run preview-ps` |
-| **Standalone** | Fully local (node + indexer + proof server via Docker) | `npm run standalone` |
+## Features
 
+The dApp is organized into five tabs:
 
-> **Use this repo as a template. Do not fork it.**
->  
-> This repository is intended to be used via GitHub’s “Use this template” flow.  
-> Forking this repo is discouraged, as forks are not tracked as independent projects.
+### Market
+- **Live Auctions** — time-limited XRPL NFT auctions with public or private bids.
+- **Newly Listed on Layla** — XRPL NFTs freshly listed on the platform (auto-refreshes every 30s).
+- **Curated List** — hand-picked featured collections, pulled live from XRPL mainnet by issuer.
+- **XRPL Collections** — live mainnet collections grouped by issuer.
+- **Your Listed NFTs** — your connected wallet's actively-listed NFTs.
+- **Trending** — trending XRPL mainnet NFTs via Bithomp (with a sample fallback).
+- **Midnight Preview Listings** — active listings from the Midnight marketplace contract.
+
+### Create
+- **Mint** — drop an image, set metadata, and mint on **XRPL Testnet** or **Midnight Preview**.
+- **Batch mint** and **platform collections** for issuing multiple NFTs / a collection at once.
+- **Token-to-NFT** minting in three modes: **hold-gated** (own a token), **pay-to-treasury**, and **burn**.
+
+### My NFTs
+- **My Midnight NFTs** — NFTs you own on Midnight Preview; list them on the marketplace.
+- **My XRPL NFTs** — NFTs in your XRPL wallet; list for sale in XRP or place a private bid.
+- **Incoming NFTs** — pending transfers to your wallet, accepted via Xaman.
+
+### Burn (Bridge)
+- **Burn-to-mint bridge** — burn an XRPL NFT or fungible token to mint its Midnight counterpart.
+
+### Wallets
+- Connect **Lace (Midnight)** and **Xaman (XRPL)**; deploy/join the Midnight NFT, Bridge, Marketplace, and Collection contracts.
+
+## XRPL vs Midnight NFTs
+
+Layla works across two very different NFT models — XRPL's native, public NFTokens and Midnight's privacy-preserving, zero-knowledge contracts.
+
+<p align="center">
+  <img src="docs/assets/infograph.png" alt="XRPL vs Midnight NFTs comparison" width="100%" />
+</p>
 
 ## Project Structure
 
 ```
 example-counter/
-├── contract/                          # Smart contract (Compact language)
-│   ├── src/counter.compact            # The counter smart contract
-│   └── src/test/                      # Contract unit tests
-└── counter-cli/                       # Command-line interface
-    ├── src/                           # CLI implementation
-    ├── proof-server.yml               # Proof server Docker config (preprod/preview)
-    ├── standalone.yml                 # Full local stack Docker config
-    └── standalone.env.example         # Default env vars for standalone mode
+├── contracts/midnight/                # Compact smart contracts
+│   ├── nft/                           # NFT contract (mint/transfer/burn)
+│   ├── bridge/                        # Bridge contract (burn redemption)
+│   ├── marketplace/                   # Marketplace contract (list/buy)
+│   └── collection/                    # Collection contract
+├── packages/
+│   ├── web/                           # Vite + React + Tailwind dApp
+│   │   ├── src/components/pages/      # Market, Create, My NFTs, Burn, Wallets
+│   │   ├── src/lib/midnight.ts        # Lace + contract ops
+│   │   ├── src/lib/xrpl.ts            # Network-aware XRPL client
+│   │   ├── src/lib/xaman.ts           # Xaman frontend client
+│   │   ├── src/lib/tokens.ts          # Token registry
+│   │   └── src/lib/aggregator.ts      # Trending NFT aggregator
+│   ├── xaman-backend/                 # Express + xumm-sdk backend
+│   │   └── src/index.ts               # Sign payloads + verification
+│   └── nftmarket-cli/                 # CLI — deploy contracts + test flows
+│       └── proof-server.yml           # Local proof server (Docker)
+└── docs/
+    ├── PLAN.md                        # Living implementation plan
+    └── HANDOVER.md                    # Cold-start run instructions
 ```
 
 ## Prerequisites
@@ -61,7 +100,7 @@ compact compile --version
 
 > If you already have the devtools installed, run `compact self update` to get the latest version. If you encounter issues, `compact clean` will reset your `.compact` directory.
 
-## Quick Start (Preprod)
+## Setup
 
 ### 1. Install dependencies
 
@@ -69,174 +108,108 @@ compact compile --version
 npm install
 ```
 
-### 2. Build the smart contract
+### 2. Build the contract packages
+
+Compile and build all four Compact contracts:
 
 ```bash
-cd contract
-npm run compact
-npm run build
-npm run test
-cd ..
+npm run compact -w @nftmarket/nft-contract && npm run build -w @nftmarket/nft-contract
+npm run compact -w @nftmarket/bridge-contract && npm run build -w @nftmarket/bridge-contract
+npm run compact -w @nftmarket/marketplace-contract && npm run build -w @nftmarket/marketplace-contract
+npm run compact -w @nftmarket/collection-contract && npm run build -w @nftmarket/collection-contract
 ```
 
-Expected output from `npm run compact`:
+> The first compile may download zero-knowledge parameters (~500MB). This is a one-time download.
 
-```
-Compiling 1 circuits:
-  circuit "increment" (k=10, rows=29)
-```
-
-The first run may download zero-knowledge parameters (~500MB). This is a one-time download.
-
-### 3. Run the DApp
-
-Option A — **auto-start proof server** (recommended):
+### 3. Configure environment
 
 ```bash
-cd counter-cli
-npm run preprod-ps
+# Backend
+cp packages/xaman-backend/.env.example packages/xaman-backend/.env
+# Edit .env: XUMM_API_KEY, XUMM_API_SECRET, TESTNET_MINT_SEED, TREASURY_ADDRESS, PINATA_JWT
+
+# Web
+cp packages/web/.env.example packages/web/.env
+# Edit .env: VITE_BITHOMP_API_KEY, VITE_TREASURY_ADDRESS, and the VITE_*_ADDRESS contract overrides
 ```
 
-This pulls the proof server Docker image, starts it, and launches the CLI.
+## Deploy the Midnight contracts (CLI)
 
-Option B — **manual proof server** (if you prefer to manage it yourself):
+The dApp joins pre-deployed Midnight Preview contracts on connect. **If you change a contract's source, you must redeploy it and update its address** — otherwise the dApp fails to join with a *verifier-key mismatch*.
 
-Start the proof server in a separate terminal:
+### 1. Start the proof server
 
 ```bash
-cd counter-cli
-docker compose -f proof-server.yml up
+docker compose -f packages/nftmarket-cli/proof-server.yml up
 ```
 
-Wait for it to start — you should see:
+Wait for: `... listening on: 0.0.0.0:6300`.
 
-```
-INFO actix_server::server: starting service: "actix-web-service-0.0.0.0:6300", workers: 24, listening on: 0.0.0.0:6300
-```
-
-Then in another terminal:
+### 2. Run the CLI and deploy
 
 ```bash
-cd counter-cli
-npm run preprod
+npm run dev -w @nftmarket/cli        # defaults to Midnight Preview
+# or explicitly: npm run preview -w @nftmarket/cli
 ```
 
-## Using the Counter DApp
+In the interactive menu:
 
-### Step 1: Create a wallet
+1. **Midnight Wallet** → create or restore a wallet, fund it from the [Preview faucet](https://faucet.preview.midnight.network), and wait for DUST to generate.
+2. **Deploy contracts** → **Deploy ALL contracts** (NFT + Bridge + Marketplace + Collection).
+3. **Deploy contracts** → **Show deployed contract addresses**, then copy them.
 
-The CLI uses a headless wallet (separate from browser wallets like Lace).
+### 3. Wire the addresses into the dApp
 
-1. Choose option **[1]** to create a new wallet
-2. The system generates a wallet seed and displays your addresses:
+Add the deployed addresses to `packages/web/.env` (these override the defaults baked into `packages/web/src/lib/midnight.ts`):
 
-```
-──────────────────────────────────────────────────────────────
-  Wallet Overview                            Network: preprod
-──────────────────────────────────────────────────────────────
-  Seed: <64-character hex string>
-
-  Unshielded Address (send tNight here):
-  mn_addr_preprod1...
-──────────────────────────────────────────────────────────────
+```bash
+VITE_NFT_ADDRESS=<nft address>
+VITE_BRIDGE_ADDRESS=<bridge address>
+VITE_MARKETPLACE_ADDRESS=<marketplace address>
+VITE_COLLECTION_ADDRESS=<collection address>
 ```
 
-**Save the seed** — you'll need it to restore the wallet later.
+## Run the dApp
 
-### Step 2: Fund your wallet
+Keep the proof server running, then start the backend and web app in separate terminals:
 
-1. Copy your **unshielded address** (`mn_addr_preprod1...`) from the output
-2. Visit the [Preprod faucet](https://faucet.preprod.midnight.network)
-3. Paste your address and request tNight tokens
-4. The CLI will detect incoming funds automatically
+```bash
+# Terminal 1 — backend
+npm run dev -w @nftmarket/xaman-backend
 
-### Step 3: Wait for DUST
-
-After receiving tNight, the CLI automatically registers your NIGHT UTXOs for dust generation. DUST is the non-transferable fee resource required for all transactions on Midnight.
-
-The CLI shows progress:
-
-```
-  ✓ Registering 1 NIGHT UTXO(s) for dust generation
-  ✓ Waiting for dust to generate
-  ✓ Configuring providers
+# Terminal 2 — web
+npm run dev -w @nftmarket/web
 ```
 
-Once DUST is available, the contract menu appears with your balance:
-
-```
-──────────────────────────────────────────────────────────────
-  Contract Actions                    DUST: 405,083,000,000,000
-──────────────────────────────────────────────────────────────
-  [1] Deploy a new counter contract
-  [2] Join an existing counter contract
-  [3] Monitor DUST balance
-  [4] Exit
-```
-
-### Step 4: Deploy a counter contract
-
-1. Choose option **[1]** to deploy
-2. Wait for proving, balancing, and submission
-3. The contract address is displayed on success:
-
-```
-  ✓ Deploying counter contract
-  Contract deployed at: <contract address>
-```
-
-**Save the contract address** to rejoin the contract in future sessions.
-
-### Step 5: Interact with your contract
-
-After deployment, the counter menu appears:
-
-- **[1] Increment counter** — submits a transaction to increment the on-chain counter
-- **[2] Display current counter value** — queries the blockchain for the current value
-- **[3] Exit**
-
-Each increment creates a real transaction on Midnight Preprod.
-
-### Returning to an existing wallet and contract
-
-Next time you run the DApp:
-
-1. Choose option **[2]** to restore wallet from seed
-2. Enter your saved seed
-3. Wait for sync and DUST generation
-4. Choose option **[2]** to join existing contract
-5. Enter your saved contract address
-
-## Monitoring DUST Balance
-
-The contract menu includes a DUST monitor (option **[3]**) that shows a live-updating display:
-
-```
-  [10:20:03 PM] DUST: 471,219,000,000,000 (1 coins, 0 pending) | NIGHT: 1 UTXOs, 1 registered | ✓ ready to deploy
-```
-
-This is useful for:
-- Checking if you have enough DUST before deploying
-- Monitoring DUST generation after registering NIGHT
-- Diagnosing issues where DUST appears locked (pending coins from failed transactions)
+Open http://localhost:5173. Connect **Lace (Midnight)** and **Xaman (XRPL)** wallets. The dApp auto-joins the configured contracts on connect.
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
 | `compact: command not found` | Run `source $HOME/.local/bin/env` to add it to your PATH. |
-| `connect ECONNREFUSED 127.0.0.1:6300` | Start the proof server: `cd counter-cli && docker compose -f proof-server.yml up` |
+| `connect ECONNREFUSED 127.0.0.1:6300` | Start the proof server: `docker compose -f packages/nftmarket-cli/proof-server.yml up` |
+| `... are undefined or have mismatched verifier keys for contract state` | The deployed contract no longer matches your local build. Redeploy it via the CLI and update the `VITE_*_ADDRESS` in `packages/web/.env`. |
 | Proof server hangs on Mac ARM (Apple Silicon) | In Docker Desktop: Settings → General → "Virtual Machine Options" → select **Docker VMM**. Restart Docker after changing. |
-| `Failed to clone intent` during deploy | Wallet SDK signing bug — already worked around in this codebase. If you see this, ensure you're running the latest code. See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) Section 4. |
-| DUST balance drops to 0 after failed deploy | Known wallet SDK issue. Restart the DApp to release locked DUST coins. |
+| `Failed to clone intent` during deploy | Wallet SDK signing bug — already worked around in this codebase. Ensure you're running the latest code. |
+| DUST balance drops to 0 after failed deploy | Known wallet SDK issue. Restart and wait for DUST to regenerate to release locked coins. |
 | Wallet shows 0 balance after faucet | Wait for sync to complete. If still 0, check that you sent to the correct unshielded address. |
 | Could not find a working container runtime strategy | Docker isn't running. Start Docker and try again. |
-| Tests fail with "Cannot find module" | Build the contract first: `cd contract && npm run compact && npm run build` |
+| Contract build fails with "Cannot find module" | Build the contract packages first (see **Setup → Build the contract packages**). |
 | Node.js warnings about experimental features | Normal — these don't affect functionality. |
+
+## Documentation
+
+- [docs/PLAN.md](docs/PLAN.md) — Living implementation plan and decisions
+- [docs/HANDOVER.md](docs/HANDOVER.md) — Cold-start run instructions and current state
+- [docs/LAUNCH_PLAN.md](docs/LAUNCH_PLAN.md) — Mainnet launch plan, fix list, and Railway deployment
+- [MARKETPLACE.md](MARKETPLACE.md) — Marketplace architecture overview
+
+> Older counter-template, GxgNight, and migration docs have been archived to the git-ignored `unused/` folder.
 
 ## Useful Links
 
-- [Preprod Faucet](https://faucet.preprod.midnight.network) — Get preprod tNight tokens
+- [Preview Faucet](https://faucet.preview.midnight.network) — Get Preview tNight tokens
 - [Midnight Documentation](https://docs.midnight.network/) — Developer guide
 - [Compact Language Guide](https://docs.midnight.network/compact) — Smart contract language reference
-- [Migration Guide](MIGRATION_GUIDE.md) — Detailed guide for migrating to Preprod with midnight-js 3.0.0 and wallet-sdk-facade 1.0.0
+- [XRPL Documentation](https://xrpl.org/docs.html) — XRPL ledger reference

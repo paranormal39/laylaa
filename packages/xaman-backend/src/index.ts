@@ -42,6 +42,10 @@ app.use(cors({ origin: origins }));
 app.set('trust proxy', 1);
 
 const PORT = Number(process.env.PORT ?? 4000);
+// PUBLIC_URL overrides the base used when constructing local-fallback upload
+// URLs. In Railway set PUBLIC_URL=https://<your-app>.up.railway.app so that
+// images served from /uploads are reachable from the browser.
+const PUBLIC_URL = (process.env.PUBLIC_URL ?? '').replace(/\/$/, '');
 
 // ---------------------------------------------------------------------------
 // Rate limiting
@@ -54,10 +58,10 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests — please try again later.' },
 });
-// Xaman payload creation: 30 req / 15 min per IP (each creates an external call)
+// Xaman payload creation: 150 req / 15 min per IP
 const xamanLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 150,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many sign requests — please slow down.' },
@@ -1416,7 +1420,9 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     }
 
     // Fallback: serve locally (not durable; configure PINATA_JWT for IPFS).
-    const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    // Use PUBLIC_URL if set so deployed images have a reachable URL, not localhost.
+    const baseUrl = PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+    const imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
     const metadata = {
       name: String(name).trim() || 'Untitled',
       description: String(description).trim() || '',
@@ -1425,7 +1431,7 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     };
     const metaFileName = `${req.file.filename}.json`;
     writeFileSync(`uploads/${metaFileName}`, JSON.stringify(metadata, null, 2));
-    const metadataUrl = `${req.protocol}://${req.get('host')}/uploads/${metaFileName}`;
+    const metadataUrl = `${baseUrl}/uploads/${metaFileName}`;
     res.json({ storage: 'local', imageUri: imageUrl, imageUrl, metadataUri: metadataUrl, metadataUrl, metadata });
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });

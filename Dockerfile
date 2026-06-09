@@ -11,6 +11,8 @@ WORKDIR /app
 
 # Copy workspace root + relevant packages
 COPY package.json package-lock.json* ./
+# Root tsconfig the contract packages extend (tsconfig.base.json)
+COPY tsconfig.base.json ./
 COPY packages/web ./packages/web
 
 # Copy contract packages that web depends on

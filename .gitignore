@@ -61,6 +61,11 @@ jspm_packages/
 
 # Compact
 managed/
+# ...but DO track the precompiled contract output the web build needs.
+# The Compact compiler isn't available in Docker/Railway, so these prebuilt
+# managed/ dirs must be committed for the production build to resolve imports.
+!contracts/midnight/*/src/managed/
+!contracts/midnight/*/src/managed/**
 
 # Archived docs not related to this repo (counter/GxgNight/migration leftovers)
 unused/

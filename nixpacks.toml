@@ -1,0 +1,3 @@
+# Disable Nixpacks - force Railway to use Dockerfile only
+[build]
+builder = "docker"

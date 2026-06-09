@@ -13,11 +13,28 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY packages/web ./packages/web
 
-# Install only what the web package needs
-RUN npm install --workspace=@nftmarket/web --include-workspace-root \
-    --ignore-scripts 2>/dev/null || npm install --workspace=@nftmarket/web --include-workspace-root
+# Copy contract packages that web depends on
+COPY contracts/midnight/nft ./contracts/midnight/nft
+COPY contracts/midnight/bridge ./contracts/midnight/bridge
+COPY contracts/midnight/marketplace ./contracts/midnight/marketplace
 
-# Build frontend (skip copy-zk — no contract packages in this image)
+# Install web + contract package dependencies
+RUN npm install --workspace=@nftmarket/web --workspace=@nftmarket/nft-contract \
+    --workspace=@nftmarket/bridge-contract --workspace=@nftmarket/marketplace-contract \
+    --include-workspace-root \
+    --ignore-scripts 2>/dev/null || \
+    npm install --workspace=@nftmarket/web --workspace=@nftmarket/nft-contract \
+    --workspace=@nftmarket/bridge-contract --workspace=@nftmarket/marketplace-contract \
+    --include-workspace-root
+
+# Build the contract packages (tsc only — the Compact-compiled managed/ dirs are
+# committed, so no compiler is needed). This produces each package's dist/index.js
+# that the web app imports.
+RUN npm run build --workspace=@nftmarket/nft-contract \
+ && npm run build --workspace=@nftmarket/bridge-contract \
+ && npm run build --workspace=@nftmarket/marketplace-contract
+
+# Build frontend (copy-zk pulls ZK assets from the contract managed/ dirs)
 WORKDIR /app/packages/web
 RUN node scripts/copy-zk.mjs 2>/dev/null || true
 RUN npx vite build

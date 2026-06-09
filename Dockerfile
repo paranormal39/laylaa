@@ -20,12 +20,10 @@ COPY contracts/midnight/nft ./contracts/midnight/nft
 COPY contracts/midnight/bridge ./contracts/midnight/bridge
 COPY contracts/midnight/marketplace ./contracts/midnight/marketplace
 
-# Install web + contract package dependencies
+# Install web + contract package dependencies. Do NOT use --ignore-scripts:
+# esbuild's postinstall downloads its platform binary, which Vite (build) and
+# tsx (runtime) both require.
 RUN npm install --workspace=@nftmarket/web --workspace=@nftmarket/nft-contract \
-    --workspace=@nftmarket/bridge-contract --workspace=@nftmarket/marketplace-contract \
-    --include-workspace-root \
-    --ignore-scripts 2>/dev/null || \
-    npm install --workspace=@nftmarket/web --workspace=@nftmarket/nft-contract \
     --workspace=@nftmarket/bridge-contract --workspace=@nftmarket/marketplace-contract \
     --include-workspace-root
 
@@ -48,9 +46,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY packages/xaman-backend ./packages/xaman-backend
 
-# Install backend dependencies
-RUN npm install --workspace=@nftmarket/xaman-backend --include-workspace-root \
-    --ignore-scripts 2>/dev/null || npm install --workspace=@nftmarket/xaman-backend --include-workspace-root
+# Install backend dependencies. Do NOT use --ignore-scripts: tsx relies on
+# esbuild's platform binary, installed by esbuild's postinstall script.
+RUN npm install --workspace=@nftmarket/xaman-backend --include-workspace-root
 
 # Copy frontend build output into the backend package
 COPY --from=web-build /app/packages/web/dist ./packages/xaman-backend/public

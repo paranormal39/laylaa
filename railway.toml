@@ -7,6 +7,3 @@ healthcheckPath = "/api/tokens"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
-
-[[services]]
-name = "layla-backend"

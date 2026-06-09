@@ -1,8 +1,13 @@
+# Railway config — GitHub auto-deploy.
+# Forces a single Dockerfile-built service for the whole app (backend serves the
+# built web frontend). Root Directory for the Railway service must be the repo root.
 [build]
+builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "npx tsx src/index.ts"
+# startCommand omitted on purpose — the Dockerfile CMD runs the backend from its
+# WORKDIR (/app/packages/xaman-backend), which also serves the web build.
 healthcheckPath = "/api/tokens"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
